@@ -11,6 +11,7 @@ Pipeline position:
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import torch
@@ -41,6 +42,28 @@ DEMO_EXAMPLES = [
         "expected_sentiment": "neutral",
     },
 ]
+
+
+def ensure_project_root() -> None:
+    if not Path("src/infer_instruction.py").exists():
+        print("Error: Run this script from the project root directory.")
+        print("  cd financial-llm-finetuning")
+        print("  python src/infer_instruction.py")
+        sys.exit(1)
+
+
+def check_adapter(adapter_path: Path) -> None:
+    """Verify the LoRA adapter directory exists and contains adapter weights."""
+    adapter_config = adapter_path / "adapter_config.json"
+    if adapter_path.is_dir() and adapter_config.exists():
+        return
+
+    print("Error: Trained LoRA adapter not found.\n")
+    print(f"  Expected: {adapter_path}/")
+    print(f"  Missing : {adapter_config}")
+    print("\nRun this command first:")
+    print("  python src/train_instruction.py")
+    sys.exit(1)
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,19 +102,17 @@ def get_compute_dtype() -> torch.dtype:
 
 def load_model_and_tokenizer(base_model: str, adapter_path: Path):
     """
-    Load 4-bit quantized base model and merge LoRA adapter weights.
+    Load 4-bit quantized base model and attach LoRA adapter weights.
 
-    The adapter directory contains adapter_config.json pointing to the base
-    model; the tokenizer is loaded from the adapter path (saved during training).
+    Tokenizer is loaded from the adapter directory (saved during training),
+    falling back to the base model if needed.
     """
-    if not adapter_path.exists():
-        raise FileNotFoundError(
-            f"Adapter not found: {adapter_path}\n"
-            "Run: python src/train_instruction.py"
-        )
+    check_adapter(adapter_path)
 
     compute_dtype = get_compute_dtype()
-    tokenizer = AutoTokenizer.from_pretrained(adapter_path, trust_remote_code=True)
+
+    tokenizer_path = adapter_path if (adapter_path / "tokenizer_config.json").exists() else base_model
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -193,6 +214,7 @@ def run_demo(model, tokenizer, max_new_tokens: int, temperature: float) -> None:
 
 
 def main() -> None:
+    ensure_project_root()
     args = parse_args()
 
     print(f"Base model    : {args.base_model}")

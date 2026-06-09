@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -47,6 +48,28 @@ NEUTRAL_KEYWORDS = (
 )
 
 SPLIT_FILES = ("train", "validation", "test")
+
+
+def ensure_project_root() -> None:
+    if not Path("src/create_instruction_dataset.py").exists():
+        print("Error: Run this script from the project root directory.")
+        print("  cd financial-llm-finetuning")
+        print("  python src/create_instruction_dataset.py")
+        sys.exit(1)
+
+
+def check_v1_inputs(input_dir: Path) -> None:
+    """Verify V1 JSONL files exist before conversion."""
+    missing = [name for name in SPLIT_FILES if not (input_dir / f"{name}.jsonl").exists()]
+    if not missing:
+        return
+
+    print("Error: V1 dataset files not found.\n")
+    for name in missing:
+        print(f"  Missing: {input_dir / f'{name}.jsonl'}")
+    print("\nRun this command first:")
+    print("  python src/download_dataset.py")
+    sys.exit(1)
 
 
 def parse_args() -> argparse.Namespace:
@@ -202,10 +225,10 @@ def load_v1_split(input_dir: Path, split_name: str, from_hf: bool) -> list[dict]
         print(f"Loading {split_name} from Hugging Face ({HF_DATASET_NAME})")
         return load_split_from_huggingface(split_name)
 
-    raise FileNotFoundError(
-        f"Missing {path}. Run `python src/download_dataset.py` first, "
-        "or pass --from-huggingface."
-    )
+    print(f"Error: Missing {path}")
+    print("\nRun this command first:")
+    print("  python src/download_dataset.py")
+    sys.exit(1)
 
 
 def save_jsonl(records: list[dict], path: Path) -> None:
@@ -295,8 +318,27 @@ def print_sample(records: list[dict], n: int = 2) -> None:
         print("-" * 55)
 
 
+def verify_outputs(output_dir: Path, examples_path: Path) -> None:
+    print("\nVerifying output files:")
+    for name in SPLIT_FILES:
+        path = output_dir / f"{name}.jsonl"
+        if not path.exists():
+            print(f"  ERROR: missing {path}")
+            sys.exit(1)
+        print(f"  OK: {path}")
+
+    if not examples_path.exists():
+        print(f"  ERROR: missing {examples_path}")
+        sys.exit(1)
+    print(f"  OK: {examples_path}")
+
+
 def main() -> None:
+    ensure_project_root()
     args = parse_args()
+
+    if not args.from_huggingface:
+        check_v1_inputs(args.input_dir)
 
     splits: dict[str, list[dict]] = {}
     for split_name in SPLIT_FILES:
@@ -310,6 +352,9 @@ def main() -> None:
 
     print_statistics(splits)
     print_sample(splits["train"])
+    verify_outputs(args.output_dir, args.write_examples)
+    print("\nV2 instruction dataset ready. Next step:")
+    print("  python src/train_instruction.py")
 
 
 if __name__ == "__main__":

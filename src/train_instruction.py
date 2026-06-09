@@ -14,6 +14,7 @@ Output: results/model-instruction/
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import torch
@@ -48,6 +49,29 @@ QWEN_LORA_TARGET_MODULES = [
     "up_proj",
     "down_proj",
 ]
+
+
+def ensure_project_root() -> None:
+    if not Path("src/train_instruction.py").exists():
+        print("Error: Run this script from the project root directory.")
+        print("  cd financial-llm-finetuning")
+        print("  python src/train_instruction.py")
+        sys.exit(1)
+
+
+def check_instruction_data(train_file: Path, val_file: Path) -> None:
+    """Exit with a clear message if V2 instruction data has not been created."""
+    missing = [path for path in (train_file, val_file) if not path.exists()]
+    if not missing:
+        return
+
+    print("Error: V2 instruction dataset not found.\n")
+    for path in missing:
+        print(f"  Missing: {path}")
+    print("\nRun these commands first:")
+    print("  python src/download_dataset.py")
+    print("  python src/create_instruction_dataset.py")
+    sys.exit(1)
 
 
 def parse_args() -> argparse.Namespace:
@@ -87,16 +111,7 @@ def load_datasets(train_file: Path, val_file: Path):
     Each record:
         instruction, input, output, sentence, label, sentiment
     """
-    if not train_file.exists():
-        raise FileNotFoundError(
-            f"Training file not found: {train_file}\n"
-            "Run: python src/create_instruction_dataset.py"
-        )
-    if not val_file.exists():
-        raise FileNotFoundError(
-            f"Validation file not found: {val_file}\n"
-            "Run: python src/create_instruction_dataset.py"
-        )
+    check_instruction_data(train_file, val_file)
 
     data_files = {"train": str(train_file), "validation": str(val_file)}
     dataset = load_dataset("json", data_files=data_files)
@@ -227,6 +242,7 @@ def print_trainable_parameters(model) -> None:
 
 
 def main() -> None:
+    ensure_project_root()
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -285,6 +301,8 @@ def main() -> None:
     trainer.save_model(str(args.output_dir))
     tokenizer.save_pretrained(str(args.output_dir))
     print("V2 training complete.")
+    print("\nNext step:")
+    print("  python src/infer_instruction.py")
 
 
 if __name__ == "__main__":

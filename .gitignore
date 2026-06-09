@@ -3,11 +3,17 @@
 venv/
 env/
 
-# Generated datasets (V1 and V2 splits — regenerate with download/create scripts)
+# Generated datasets — regenerate with download/create scripts
 data/
 
-# Model artifacts and experiment outputs (not committed)
+# Model artifacts, checkpoints, and experiment outputs (never commit)
 results/
+checkpoints/
+
+# Weights & experiment tracking
+wandb/
+*.safetensors
+*.bin
 
 # Python cache
 __pycache__/
@@ -37,6 +43,6 @@ scripts/
 *.swp
 *.swo
 
-# Tracked documentation (do NOT ignore):
+# Tracked in repo (do NOT ignore):
 #   examples/instruction_examples.md
 #   examples/instruction_examples.jsonl

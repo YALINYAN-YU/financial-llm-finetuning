@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -16,6 +17,16 @@ INSTRUCTION = (
     "Classify the sentiment of the following financial news sentence "
     "as negative, neutral, or positive."
 )
+SPLIT_NAMES = ("train", "validation", "test")
+
+
+def ensure_project_root() -> None:
+    """Ensure the script is run from the repository root."""
+    if not Path("src/download_dataset.py").exists():
+        print("Error: Run this script from the project root directory.")
+        print("  cd financial-llm-finetuning")
+        print("  python src/download_dataset.py")
+        sys.exit(1)
 
 
 def parse_args() -> argparse.Namespace:
@@ -131,7 +142,19 @@ def save_splits(splits: dict, output_dir: Path) -> None:
         print(f"Saved {name:>10} -> {path}")
 
 
+def verify_outputs(output_dir: Path) -> None:
+    """Confirm all V1 split files were written successfully."""
+    print("\nVerifying output files:")
+    for name in SPLIT_NAMES:
+        path = output_dir / f"{name}.jsonl"
+        if not path.exists():
+            print(f"  ERROR: missing {path}")
+            sys.exit(1)
+        print(f"  OK: {path} ({path.stat().st_size:,} bytes)")
+
+
 def main() -> None:
+    ensure_project_root()
     args = parse_args()
 
     print(f"Downloading {DATASET_NAME}...")
@@ -148,6 +171,9 @@ def main() -> None:
 
     save_splits(splits, args.output_dir)
     print_dataset_statistics(splits)
+    verify_outputs(args.output_dir)
+    print("\nV1 dataset ready. Next step:")
+    print("  python src/create_instruction_dataset.py")
 
 
 if __name__ == "__main__":
