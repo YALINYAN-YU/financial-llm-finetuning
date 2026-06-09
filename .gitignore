@@ -3,8 +3,10 @@
 venv/
 env/
 
-# Generated data and experiment outputs
+# Generated datasets (V1 and V2 splits — regenerate with download/create scripts)
 data/
+
+# Model artifacts and experiment outputs (not committed)
 results/
 
 # Python cache
@@ -34,3 +36,7 @@ scripts/
 .vscode/
 *.swp
 *.swo
+
+# Tracked documentation (do NOT ignore):
+#   examples/instruction_examples.md
+#   examples/instruction_examples.jsonl

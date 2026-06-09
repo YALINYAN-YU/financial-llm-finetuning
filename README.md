@@ -2,6 +2,13 @@
 
 Fine-tune **Qwen2.5** on financial-domain text using **QLoRA** (Quantized Low-Rank Adaptation) to build a cost-efficient, domain-specialized language model for financial NLP tasks.
 
+The project includes two tracks:
+
+| Track | Task | Output |
+|-------|------|--------|
+| **V1** | Sentiment classification (single-label) | `results/model` |
+| **V2** | Financial instruction tuning (Sentiment + Reason) | `results/model-instruction` |
+
 ---
 
 ## Project Overview
@@ -23,149 +30,144 @@ This project demonstrates an end-to-end **parameter-efficient fine-tuning** work
 
 ## Architecture
 
-The system follows a standard **adapt → train → evaluate → deploy** pattern. The base Qwen3 weights remain frozen in 4-bit precision; only lightweight LoRA adapter layers are updated during training.
+The system follows a standard **adapt → train → infer → evaluate** pattern. The base Qwen2.5 weights remain frozen in 4-bit precision; only lightweight LoRA adapter layers are updated during training.
 
 ```mermaid
 flowchart LR
-    A[Financial JSONL Dataset] --> B[Prompt Formatting & Tokenization]
-    B --> C[Qwen3 Base Model<br/>4-bit Quantized]
-    C --> D[LoRA Adapters<br/>Trainable]
-    D --> E[Fine-Tuned Checkpoint]
-    E --> F[Inference]
-    E --> G[Evaluation]
-    G --> H[Metrics & Predictions]
+    A[Financial PhraseBank] --> B[Dataset Scripts]
+    B --> C[Instruction JSONL]
+    C --> D[Qwen2.5 Base Model<br/>4-bit Quantized]
+    D --> E[LoRA Adapters]
+    E --> F[Fine-Tuned Adapter]
+    F --> G[infer_instruction.py]
+    F --> H[evaluate.py]
 ```
 
 | Component | Role |
 |-----------|------|
-| **Qwen3** | Base causal language model providing general reasoning and language capabilities |
-| **4-bit Quantization (NF4)** | Loads the frozen base model in low precision via `bitsandbytes`, reducing VRAM usage by ~4× |
-| **LoRA Adapters** | Low-rank matrices injected into attention layers (`q_proj`, `v_proj`); only ~0.1–1% of parameters are trained |
-| **Instruction Template** | Structured `Instruction / Input / Response` format for supervised fine-tuning |
-| **Hugging Face Trainer** | Orchestrates training loops, checkpointing, and mixed-precision execution |
-
-This design makes it feasible to fine-tune a multi-billion-parameter model on a single GPU while preserving most of the base model's general knowledge.
+| **Qwen2.5-Instruct** | Base causal language model |
+| **4-bit Quantization (NF4)** | Frozen base weights via `bitsandbytes`, ~4× VRAM savings |
+| **LoRA Adapters** | Trainable low-rank matrices in attention + MLP layers |
+| **Instruction Template** | User prompt + structured assistant response |
+| **TRL SFTTrainer** | Supervised fine-tuning with assistant-only loss |
 
 ---
 
 ## Dataset
 
-Training data is stored in `data/` as **JSONL** files — one JSON object per line. Each record follows an instruction-tuning schema suited to financial NLP:
+Data is sourced from [Financial PhraseBank](https://huggingface.co/datasets/lmassaron/FinancialPhraseBank) — 4,840 English financial news sentences labeled negative, neutral, or positive.
 
-| Field | Description |
-|-------|-------------|
-| `instruction` | Task description or question (e.g., *"Explain the debt-to-equity ratio"*) |
-| `input` | Optional context — a sentence, paragraph, or filing excerpt |
-| `output` | Target response the model should learn to generate |
+### V1 format (`data/train.jsonl`)
 
-**Example record:**
+Short classification labels:
 
 ```json
 {
-  "instruction": "Summarize the key financial risks disclosed in this excerpt.",
-  "input": "The Company faces interest rate exposure on its $2.1B floating-rate debt...",
-  "output": "Primary risks include interest rate sensitivity on floating-rate debt, potential covenant breaches under adverse market conditions, and concentration in commercial real estate lending."
+  "sentence": "Operating profit was EUR 139.7 mn, up 23 % from EUR 113.8 mn .",
+  "label": 2,
+  "instruction": "Classify the sentiment...",
+  "output": "positive"
 }
 ```
 
-**Supported task types** (extensible via the same schema):
+### V2 format (`data/instruction/train.jsonl`)
 
-- Financial question answering and concept explanation
-- Earnings call and SEC filing summarization
-- Sentiment and tone analysis of financial text
-- Named entity and metric extraction from reports
+Rich instruction-tuning responses with reasoning:
 
-Recommended split: `data/train.jsonl` for training, `data/eval.jsonl` for held-out evaluation. Exploratory analysis and data profiling can be done in `notebooks/`.
+```json
+{
+  "instruction": "Analyze the sentiment of the following financial news sentence...",
+  "input": "Apple reported record earnings.",
+  "output": "Sentiment: Positive\n\nReason:\nThe company exceeded earnings expectations and reported strong financial performance.",
+  "sentence": "Apple reported record earnings.",
+  "label": 2,
+  "sentiment": "positive"
+}
+```
+
+See [`examples/instruction_examples.md`](examples/instruction_examples.md) for full prompt/response examples.
 
 ---
 
-## Training Pipeline
+## Pipelines
 
-The pipeline is implemented across three scripts in `src/` and produces artifacts in `results/`.
+### V1 — Sentiment classification
 
-```
-data/train.jsonl
-      │
-      ▼
-┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  train.py   │ ──▶ │ results/         │ ──▶ │  inference.py   │
-│  QLoRA SFT  │     │ checkpoints/     │     │  Generate text  │
-└─────────────┘     └──────────────────┘     └─────────────────┘
-                           │
-                           ▼
-                    ┌─────────────┐
-                    │ evaluate.py │
-                    │  Metrics    │
-                    └─────────────┘
-                           │
-                           ▼
-                    results/eval/
+```bash
+# 1. Download dataset
+python src/download_dataset.py
+
+# 2. Train (QLoRA)
+python src/train.py
+
+# 3. Evaluate
+python src/evaluate.py \
+  --model-path results/model \
+  --eval-file data/test.jsonl
 ```
 
-**Training steps (`train.py`):**
+### V2 — Financial instruction tuning
 
-1. Load Qwen3 base model with 4-bit quantization and attach LoRA adapters via PEFT
-2. Load and tokenize the financial instruction dataset (max sequence length configurable)
-3. Run supervised fine-tuning with the Hugging Face `Trainer` (mixed-precision when GPU is available)
-4. Save adapter weights and tokenizer to `results/checkpoints/`
+```bash
+# 1. Download dataset (if not already present)
+python src/download_dataset.py
 
-**Default hyperparameters:**
+# 2. Convert labels → rich instruction responses
+python src/create_instruction_dataset.py
 
-| Parameter | Default | Notes |
-|-----------|---------|-------|
-| LoRA rank (`r`) | 16 | Controls adapter capacity |
-| LoRA alpha | 32 | Scaling factor for adapter updates |
-| Learning rate | 2e-4 | Standard for LoRA fine-tuning |
-| Epochs | 3 | Adjust based on dataset size |
-| Batch size | 4 | Increase with gradient accumulation if VRAM allows |
-| Max sequence length | 512 | Increase for longer filing excerpts |
+# 3. Train instruction model
+python src/train_instruction.py
 
-### Setup
+# 4. Run demo inference (3 examples)
+python src/infer_instruction.py
+```
+
+**V2 pipeline diagram:**
+
+```
+download_dataset.py
+        │
+        ▼
+create_instruction_dataset.py  ──▶  data/instruction/*.jsonl
+        │
+        ▼
+train_instruction.py           ──▶  results/model-instruction/
+        │
+        ▼
+infer_instruction.py             ──▶  Sentiment + Reason responses
+```
+
+---
+
+## Setup
+
+**Local (Mac) — dataset download only:**
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
+python src/download_dataset.py
 ```
 
-### Run training
+**Colab / Kaggle — training and inference:**
 
 ```bash
-python src/train.py \
-  --model-name Qwen/Qwen3-8B \
-  --train-file data/train.jsonl \
-  --output-dir results/checkpoints
-```
-
-### Run inference
-
-```bash
-python src/inference.py \
-  --model-path results/checkpoints \
-  --prompt "What are the main components of a cash flow statement?"
-```
-
-### Run evaluation
-
-```bash
-python src/evaluate.py \
-  --model-path results/checkpoints \
-  --eval-file data/eval.jsonl \
-  --output-dir results/eval
+pip install -r requirements-train.txt
 ```
 
 ---
 
-## Experiment Results
+## Experiment Results (V1)
 
-A smoke-test run on Google Colab validated the full training pipeline — from dataset loading through LoRA adapter export — before scaling to longer runs.
+A smoke-test run on Google Colab validated the full training pipeline — from dataset loading through LoRA adapter export.
 
 | | |
 |---|---|
-| **Dataset** | [Financial PhraseBank](https://huggingface.co/datasets/lmassaron/FinancialPhraseBank) |
-| **Task** | Financial sentiment classification (negative / neutral / positive) |
+| **Dataset** | Financial PhraseBank |
+| **Task** | Financial sentiment classification |
 | **Base model** | `Qwen/Qwen2.5-0.5B-Instruct` |
-| **Method** | QLoRA — 4-bit NF4 quantization (BitsAndBytes) + LoRA adapters (PEFT) |
+| **Method** | QLoRA — 4-bit NF4 + LoRA adapters |
 
 ### Smoke test setup
 
@@ -187,29 +189,20 @@ A smoke-test run on Google Colab validated the full training pipeline — from d
 | Validation token accuracy | **92.67%** |
 | Output | LoRA adapter saved to `results/model` |
 
-Even with only 20 optimization steps, validation loss fell below training loss and token-level accuracy exceeded 92%, indicating the model quickly learned the sentiment classification format. A full training run (multiple epochs, larger base model) is expected to improve task-level F1 and generalization on held-out test data.
-
-> **Note:** Trained LoRA adapter files are not committed to GitHub because model artifacts can be large. This repository focuses on **reproducible training code** and **experiment documentation** — anyone can regenerate the adapter by running `src/download_dataset.py` followed by `src/train.py` on a GPU environment.
+> **Note:** Trained LoRA adapter files are **not committed to GitHub** because model artifacts can be large. This repository focuses on **reproducible training code** and **experiment documentation** — regenerate adapters by running the pipeline scripts on a GPU environment.
 
 ---
 
 ## Evaluation Metrics
 
-Model quality is assessed on a held-out evaluation set using `evaluate.py`. Results are written to `results/eval/` as structured JSON for reproducibility and downstream analysis.
+Model quality is assessed on a held-out evaluation set using `evaluate.py`. Results are written to `results/eval/` as structured JSON.
 
 | Metric | Description |
 |--------|-------------|
-| **Exact Match (EM)** | Fraction of predictions that exactly match the reference answer (case-insensitive). Useful as a strict baseline for short-form QA. |
+| **Exact Match (EM)** | Fraction of predictions matching the reference (case-insensitive) |
 | **Num Examples** | Count of evaluation samples processed |
 
-**Outputs:**
-
-- `results/eval/metrics.json` — aggregate scores
-- `results/eval/predictions.jsonl` — per-example predictions with references for error analysis
-
-For generative financial tasks where exact string match is too strict, predictions can be further scored with **ROUGE-L**, **BERTScore**, or **LLM-as-judge** evaluation — see [Future Improvements](#future-improvements).
-
-Inference uses greedy decoding by default during evaluation (`temperature=0.0`) to ensure deterministic, comparable results.
+For V2 instruction outputs, task-level metrics (sentiment F1, ROUGE on reasons) can be added — see [Future Improvements](#future-improvements).
 
 ---
 
@@ -217,14 +210,12 @@ Inference uses greedy decoding by default during evaluation (`temperature=0.0`) 
 
 | Area | Planned Enhancement |
 |------|---------------------|
-| **Quantization** | Formalize 4-bit NF4 loading in `train.py` with `BitsAndBytesConfig` for full QLoRA compliance |
-| **Evaluation** | Add ROUGE, BERTScore, and task-specific metrics (F1 for extraction tasks) |
-| **Data** | Integrate public financial corpora (FiQA, Financial PhraseBank, SEC filings) with automated preprocessing |
-| **Training** | Gradient accumulation, learning-rate scheduling, and early stopping based on validation loss |
-| **Serving** | Export merged adapter weights and deploy via vLLM or Hugging Face TGI for low-latency inference |
-| **Safety** | Add disclaimer generation and hallucination checks for financial advice scenarios |
-| **Experiment tracking** | Integrate Weights & Biases or MLflow for run comparison and hyperparameter sweeps |
-| **Notebooks** | Add EDA and ablation studies in `notebooks/` to document data quality and LoRA rank experiments |
+| **V2 evaluation** | Sentiment F1 and ROUGE/BERTScore on generated reasons |
+| **Training** | Full-epoch V2 runs and larger base models (Qwen2.5-3B) |
+| **Data** | FiQA, SEC filings, multi-task instruction mixtures |
+| **Serving** | Merge adapters and deploy via vLLM or Hugging Face TGI |
+| **Safety** | Disclaimer generation and hallucination checks |
+| **Experiment tracking** | Weights & Biases or MLflow integration |
 
 ---
 
@@ -233,14 +224,25 @@ Inference uses greedy decoding by default during evaluation (`temperature=0.0`) 
 ```
 financial-llm-finetuning/
 ├── README.md
-├── requirements.txt
-├── data/              # Raw and processed datasets (train.jsonl, eval.jsonl)
-├── notebooks/         # Exploratory analysis and experiments
+├── requirements.txt              # Mac-compatible (dataset download)
+├── requirements-train.txt        # Colab/Kaggle (training)
+├── examples/
+│   ├── instruction_examples.md   # V2 prompt/response documentation
+│   └── instruction_examples.jsonl
+├── data/                         # Generated — not committed
+│   ├── train.jsonl               # V1 splits
+│   └── instruction/              # V2 splits
 ├── src/
-│   ├── train.py       # QLoRA fine-tuning script
-│   ├── inference.py   # Text generation with fine-tuned model
-│   └── evaluate.py    # Held-out evaluation and metrics export
-└── results/           # Checkpoints, logs, and evaluation outputs
+│   ├── download_dataset.py       # Download Financial PhraseBank
+│   ├── create_instruction_dataset.py  # V1 → V2 conversion
+│   ├── train.py                  # V1 QLoRA training
+│   ├── train_instruction.py      # V2 QLoRA instruction tuning
+│   ├── infer_instruction.py      # V2 demo inference
+│   ├── inference.py              # V1 inference
+│   └── evaluate.py               # Evaluation
+└── results/                      # Model artifacts — not committed
+    ├── model/                    # V1 adapter
+    └── model-instruction/        # V2 adapter
 ```
 
 ---
