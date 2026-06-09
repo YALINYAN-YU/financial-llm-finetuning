@@ -1,0 +1,36 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Generated data and experiment outputs
+data/
+results/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# macOS
+.DS_Store
+
+# Hugging Face / tooling caches
+.cache/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local notebooks and setup scripts (not part of repo source)
+notebooks/
+scripts/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
