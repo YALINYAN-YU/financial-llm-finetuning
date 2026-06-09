@@ -6,29 +6,21 @@ import argparse
 from collections import Counter
 from pathlib import Path
 
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 
 
-DATASET_NAME = "takala/financial_phrasebank"
-DEFAULT_CONFIG = "sentences_allagree"
+# Parquet-based dataset — no legacy loading script, works on Colab/modern datasets
+DATASET_NAME = "lmassaron/FinancialPhraseBank"
 LABEL_NAMES = {0: "negative", 1: "neutral", 2: "positive"}
+INSTRUCTION = (
+    "Classify the sentiment of the following financial news sentence "
+    "as negative, neutral, or positive."
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Download Financial PhraseBank and create train/validation/test splits."
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=DEFAULT_CONFIG,
-        choices=[
-            "sentences_allagree",
-            "sentences_75agree",
-            "sentences_66agree",
-            "sentences_50agree",
-        ],
-        help="Annotator agreement threshold configuration",
     )
     parser.add_argument(
         "--output-dir",
@@ -47,6 +39,29 @@ def validate_ratios(train_ratio: float, val_ratio: float, test_ratio: float) -> 
     total = train_ratio + val_ratio + test_ratio
     if abs(total - 1.0) > 1e-6:
         raise ValueError(f"Split ratios must sum to 1.0, got {total:.4f}")
+
+
+def load_financial_phrasebank():
+    """Load Financial PhraseBank from Hugging Face (Parquet, no loading script)."""
+    dataset_dict = load_dataset(DATASET_NAME)
+    parts = [dataset_dict[split] for split in ("train", "validation", "test") if split in dataset_dict]
+    if not parts:
+        raise ValueError(f"No splits found in dataset {DATASET_NAME}")
+
+    if len(parts) == 1:
+        return parts[0]
+    return concatenate_datasets(parts)
+
+
+def format_example(example: dict) -> dict:
+    label_id = int(example["label"])
+    sentiment = example.get("sentiment") or LABEL_NAMES[label_id]
+    return {
+        "sentence": example["sentence"],
+        "label": label_id,
+        "instruction": INSTRUCTION,
+        "output": sentiment,
+    }
 
 
 def label_distribution(dataset) -> dict[str, int]:
@@ -69,6 +84,7 @@ def print_dataset_statistics(splits: dict) -> None:
     print("=" * 50)
     print("Financial PhraseBank — Dataset Statistics")
     print("=" * 50)
+    print(f"Source         : {DATASET_NAME}")
     print(f"Total examples : {total}")
     print(f"Splits         : {', '.join(splits)}")
 
@@ -109,16 +125,17 @@ def save_splits(splits: dict, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for name, split in splits.items():
+        formatted = split.map(format_example, remove_columns=split.column_names)
         path = output_dir / f"{name}.jsonl"
-        split.to_json(path, orient="records", lines=True)
+        formatted.to_json(path, orient="records", lines=True)
         print(f"Saved {name:>10} -> {path}")
 
 
 def main() -> None:
     args = parse_args()
 
-    print(f"Downloading {DATASET_NAME} (config: {args.config})...")
-    dataset = load_dataset(DATASET_NAME, args.config, split="train", trust_remote_code=True)
+    print(f"Downloading {DATASET_NAME}...")
+    dataset = load_financial_phrasebank()
 
     print(f"Loaded {len(dataset)} examples from Hugging Face.")
     splits = create_splits(
