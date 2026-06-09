@@ -1,6 +1,6 @@
 # Financial LLM Fine-Tuning
 
-Fine-tune **Qwen3** on financial-domain text using **QLoRA** (Quantized Low-Rank Adaptation) to build a cost-efficient, domain-specialized language model for financial NLP tasks.
+Fine-tune **Qwen2.5** on financial-domain text using **QLoRA** (Quantized Low-Rank Adaptation) to build a cost-efficient, domain-specialized language model for financial NLP tasks.
 
 ---
 
@@ -8,7 +8,7 @@ Fine-tune **Qwen3** on financial-domain text using **QLoRA** (Quantized Low-Rank
 
 Large language models generalize well across many domains, but they often underperform on specialized financial language — earnings terminology, regulatory filings, ratio analysis, and market commentary require targeted adaptation. Training a full model from scratch is prohibitively expensive; full fine-tuning of a 7B+ parameter model is often impractical on consumer hardware.
 
-This project demonstrates an end-to-end **parameter-efficient fine-tuning** workflow that adapts Qwen3 to financial text while keeping GPU memory requirements low. The pipeline covers data preparation, QLoRA training, inference, and quantitative evaluation — packaged as a reproducible, modular codebase suitable for portfolio review and technical interviews.
+This project demonstrates an end-to-end **parameter-efficient fine-tuning** workflow that adapts Qwen2.5 to financial text while keeping GPU memory requirements low. The pipeline covers data preparation, QLoRA training, inference, and quantitative evaluation — packaged as a reproducible, modular codebase suitable for portfolio review.
 
 **Key outcomes this project showcases:**
 
@@ -156,6 +156,43 @@ python src/evaluate.py \
 
 ---
 
+## Experiment Results
+
+A smoke-test run on Google Colab validated the full training pipeline — from dataset loading through LoRA adapter export — before scaling to longer runs.
+
+| | |
+|---|---|
+| **Dataset** | [Financial PhraseBank](https://huggingface.co/datasets/lmassaron/FinancialPhraseBank) |
+| **Task** | Financial sentiment classification (negative / neutral / positive) |
+| **Base model** | `Qwen/Qwen2.5-0.5B-Instruct` |
+| **Method** | QLoRA — 4-bit NF4 quantization (BitsAndBytes) + LoRA adapters (PEFT) |
+
+### Smoke test setup
+
+| Setting | Value |
+|---------|-------|
+| Hardware | NVIDIA T4 GPU (Google Colab) |
+| Training steps | 20 (`max_steps=20`) |
+| Train examples | 3,872 |
+| Validation examples | 484 |
+| Batch size | 1 (gradient accumulation: 4) |
+| Max sequence length | 256 |
+
+### Metrics
+
+| Metric | Value |
+|--------|-------|
+| Train loss | 0.3853 |
+| Validation loss | 0.1906 |
+| Validation token accuracy | **92.67%** |
+| Output | LoRA adapter saved to `results/model` |
+
+Even with only 20 optimization steps, validation loss fell below training loss and token-level accuracy exceeded 92%, indicating the model quickly learned the sentiment classification format. A full training run (multiple epochs, larger base model) is expected to improve task-level F1 and generalization on held-out test data.
+
+> **Note:** Trained LoRA adapter files are not committed to GitHub because model artifacts can be large. This repository focuses on **reproducible training code** and **experiment documentation** — anyone can regenerate the adapter by running `src/download_dataset.py` followed by `src/train.py` on a GPU environment.
+
+---
+
 ## Evaluation Metrics
 
 Model quality is assessed on a held-out evaluation set using `evaluate.py`. Results are written to `results/eval/` as structured JSON for reproducibility and downstream analysis.
@@ -210,4 +247,4 @@ financial-llm-finetuning/
 
 ## License
 
-This project is intended for research and portfolio demonstration. Verify the license terms of the base Qwen3 model and any datasets used before commercial deployment.
+This project is intended for research and portfolio demonstration. Verify the license terms of the base Qwen2.5 model and any datasets used before commercial deployment.
