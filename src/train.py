@@ -1,7 +1,7 @@
 """
 QLoRA fine-tuning script for financial sentiment classification.
 
-Fine-tunes Qwen3-Instruct on instruction-formatted Financial PhraseBank data
+Fine-tunes Qwen2.5-Instruct on instruction-formatted Financial PhraseBank data
 using 4-bit quantization (BitsAndBytes) and LoRA adapters (PEFT), orchestrated
 via TRL's SFTTrainer.
 
@@ -27,7 +27,7 @@ from trl import SFTConfig, SFTTrainer
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-DEFAULT_MODEL = "Qwen/Qwen3-0.6B-Instruct"
+DEFAULT_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 DEFAULT_TRAIN_FILE = Path("data/train.jsonl")
 DEFAULT_VAL_FILE = Path("data/validation.jsonl")
 DEFAULT_OUTPUT_DIR = Path("results/model")
@@ -37,7 +37,7 @@ DEFAULT_LORA_R = 16
 DEFAULT_LORA_ALPHA = 32
 DEFAULT_LORA_DROPOUT = 0.05
 
-# Target every linear projection in Qwen3 attention + MLP blocks
+# Target every linear projection in Qwen2.5 attention + MLP blocks
 QWEN_LORA_TARGET_MODULES = [
     "q_proj",
     "k_proj",
@@ -52,7 +52,7 @@ QWEN_LORA_TARGET_MODULES = [
 def parse_args() -> argparse.Namespace:
     """Parse CLI arguments with production-ready defaults."""
     parser = argparse.ArgumentParser(
-        description="QLoRA fine-tune Qwen3 on financial instruction data"
+        description="QLoRA fine-tune Qwen2.5 on financial instruction data"
     )
     parser.add_argument("--model-name", type=str, default=DEFAULT_MODEL)
     parser.add_argument("--train-file", type=Path, default=DEFAULT_TRAIN_FILE)
@@ -143,7 +143,7 @@ def prepare_conversational_dataset(dataset):
 
 
 def load_tokenizer(model_name: str):
-    """Load the Qwen3 tokenizer and ensure padding is configured for batching."""
+    """Load the Qwen2.5 tokenizer and ensure padding is configured for batching."""
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
     # Qwen models often lack an explicit pad token; reuse EOS for padding
