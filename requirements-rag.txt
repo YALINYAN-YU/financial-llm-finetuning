@@ -1,11 +1,4 @@
-# V3 RAG demo dependencies (Colab / local GPU)
+# V3 RAG demo — alias for full requirements
 # Install: pip install -r requirements-rag.txt
 
--r requirements-train.txt
-
-# Streamlit UI
-streamlit>=1.28.0
-
-# RAG retrieval
-sentence-transformers>=2.2.0
-faiss-cpu>=1.7.4
+-r requirements.txt
