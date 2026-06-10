@@ -4,7 +4,12 @@ venv/
 env/
 
 # Generated datasets — regenerate with download/create scripts
-data/
+data/*
+!data/knowledge_base/
+!data/knowledge_base/**
+
+# RAG index (generated — rebuild with build_rag_index.py)
+rag_index/
 
 # Model artifacts, checkpoints, and experiment outputs (never commit)
 results/
@@ -14,6 +19,8 @@ checkpoints/
 wandb/
 *.safetensors
 *.bin
+*.pt
+*.pth
 
 # Python cache
 __pycache__/
@@ -44,5 +51,7 @@ scripts/
 *.swo
 
 # Tracked in repo (do NOT ignore):
+#   data/knowledge_base/*.md
 #   examples/instruction_examples.md
 #   examples/instruction_examples.jsonl
+#   assets/*.png

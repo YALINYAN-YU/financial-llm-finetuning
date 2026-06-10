@@ -11,6 +11,7 @@ This project demonstrates how to build a complete LLM fine-tuning pipeline for f
 | **Dataset** | Financial PhraseBank — 4,840 labeled sentences |
 | **Task** | Financial sentiment classification with reasoning |
 | **Stack** | PyTorch · Transformers · PEFT · TRL · bitsandbytes |
+| **V3 Demo** | RAG + Streamlit financial AI assistant |
 
 ---
 
@@ -22,6 +23,7 @@ This project demonstrates how to build a complete LLM fine-tuning pipeline for f
 - Automated dataset generation workflow
 - Financial sentiment classification with reasoning generation
 - Reproducible training and inference process
+- RAG-powered demo combining retrieval with instruction-tuned inference
 
 ---
 
@@ -107,6 +109,60 @@ V2 is the primary portfolio track — it showcases instruction tuning and explai
 
 ---
 
+## V3 — RAG Financial AI Assistant
+
+V3 adds a **retrieval-augmented generation (RAG)** layer and a **Streamlit** demo on top of the V2 instruction-tuned model. A local knowledge base supplies domain context; the fine-tuned model produces sentiment classification with reasoning.
+
+### RAG architecture
+
+```
+User Query (financial news / question)
+        ↓
+rag_retrieve.py  ←  FAISS index  ←  build_rag_index.py
+        ↓                              ↑
+Retrieved Context              data/knowledge_base/*.md
+        ↓
+V2 LoRA Adapter (Qwen2.5 + QLoRA)
+        ↓
+Sentiment + Reasoning Output
+        ↓
+Streamlit UI (app.py)
+```
+
+| Component | Role |
+|-----------|------|
+| `data/knowledge_base/` | Curated financial terms, earnings examples, risk factors |
+| `build_rag_index.py` | Chunk markdown, embed with sentence-transformers, build FAISS index |
+| `rag_retrieve.py` | Top-k semantic retrieval for a user query |
+| `app.py` | Streamlit UI — shows context, sentiment, and reasoning |
+
+### Run V3
+
+```bash
+# 1. Build RAG index (one-time, or after editing knowledge base)
+python src/build_rag_index.py
+
+# 2. Train V2 adapter (if not already done)
+python src/download_dataset.py
+python src/create_instruction_dataset.py
+python src/train_instruction.py
+
+# 3. Launch Streamlit demo
+streamlit run app.py
+```
+
+**Colab one-liner setup:**
+
+```bash
+pip install -q -r requirements-rag.txt
+python src/build_rag_index.py
+streamlit run app.py
+```
+
+> `rag_index/`, model adapters, and caches are **not committed** — rebuild locally or in Colab.
+
+---
+
 ## Reproducing Results
 
 Clone the repo on a GPU runtime (Google Colab / Kaggle). No data or model weights are committed — the full pipeline regenerates everything:
@@ -133,23 +189,25 @@ Each script validates its inputs and prints the next step on success.
 ```
 financial-llm-finetuning/
 ├── README.md
-├── requirements.txt                 # Mac-compatible (dataset download)
-├── requirements-train.txt           # Colab / Kaggle (training)
+├── app.py                           # V3 Streamlit demo
+├── requirements.txt
+├── requirements-train.txt
+├── requirements-rag.txt             # V3 RAG + Streamlit deps
 ├── assets/
-│   ├── training_result.png
-│   └── inference_demo.png
+├── data/
+│   └── knowledge_base/              # V3 curated docs (committed)
 ├── examples/
-│   ├── instruction_examples.md
-│   └── instruction_examples.jsonl
 ├── src/
-│   ├── download_dataset.py          # Hugging Face → V1 JSONL
-│   ├── create_instruction_dataset.py # V1 → V2 instruction data
-│   ├── train_instruction.py         # V2 QLoRA fine-tuning
-│   ├── infer_instruction.py         # V2 inference demo
-│   ├── train.py                     # V1 QLoRA fine-tuning
-│   ├── inference.py                 # V1 inference
-│   └── evaluate.py                  # Held-out evaluation
-├── data/                            # Generated — not committed
+│   ├── download_dataset.py
+│   ├── create_instruction_dataset.py
+│   ├── train_instruction.py
+│   ├── infer_instruction.py
+│   ├── build_rag_index.py           # V3 index builder
+│   ├── rag_retrieve.py              # V3 retrieval
+│   ├── train.py
+│   ├── inference.py
+│   └── evaluate.py
+├── rag_index/                       # Generated — not committed
 └── results/                         # Adapters — not committed
 ```
 
