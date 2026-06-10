@@ -109,32 +109,47 @@ V2 is the primary portfolio track — it showcases instruction tuning and explai
 
 ---
 
-## V3 — RAG Financial AI Assistant
+## V3 RAG Financial Assistant
 
-V3 adds a **retrieval-augmented generation (RAG)** layer and a **Streamlit** demo on top of the V2 instruction-tuned model. A local knowledge base supplies domain context; the fine-tuned model produces sentiment classification with reasoning.
+V3 combines **retrieval-augmented generation (RAG)** with the V2 instruction-tuned model in a **Streamlit** web interface. Users submit financial news or questions; the system retrieves relevant domain context from a local knowledge base, then the fine-tuned model produces structured sentiment analysis with natural-language reasoning.
 
-### RAG architecture
+### Architecture
 
 ```
-User Query (financial news / question)
-        ↓
-rag_retrieve.py  ←  FAISS index  ←  build_rag_index.py
-        ↓                              ↑
-Retrieved Context              data/knowledge_base/*.md
-        ↓
-V2 LoRA Adapter (Qwen2.5 + QLoRA)
-        ↓
+User Query
+     ↓
+Sentence Transformer Embedding
+     ↓
+FAISS Retrieval
+     ↓
+Knowledge Base Context
+     ↓
+Instruction-Tuned Financial Model
+     ↓
 Sentiment + Reasoning Output
-        ↓
-Streamlit UI (app.py)
 ```
 
-| Component | Role |
-|-----------|------|
-| `data/knowledge_base/` | Curated financial terms, earnings examples, risk factors |
-| `build_rag_index.py` | Chunk markdown, embed with sentence-transformers, build FAISS index |
+| Layer | Implementation |
+|-------|----------------|
+| Embedding | `sentence-transformers/all-MiniLM-L6-v2` |
+| Vector store | FAISS (`rag_index/`) |
+| Knowledge base | `data/knowledge_base/*.md` |
+| Generator | `Qwen/Qwen2.5-0.5B-Instruct` + V2 LoRA adapter |
+| Interface | `app.py` (Streamlit) |
+
+### Features
+
+- Retrieval-Augmented Generation (RAG)
+- FAISS Vector Search
+- Financial Knowledge Base
+- Streamlit Web Interface
+- Financial Sentiment Reasoning
+
+| Script | Role |
+|--------|------|
+| `build_rag_index.py` | Chunk markdown, embed, build FAISS index |
 | `rag_retrieve.py` | Top-k semantic retrieval for a user query |
-| `app.py` | Streamlit UI — shows context, sentiment, and reasoning |
+| `app.py` | Streamlit UI — context, sentiment, and reasoning |
 
 ### Run V3
 
@@ -154,7 +169,7 @@ streamlit run app.py
 **Colab one-liner setup:**
 
 ```bash
-pip install -q -r requirements-rag.txt
+pip install -q -r requirements.txt
 python src/build_rag_index.py
 streamlit run app.py
 ```
@@ -228,3 +243,22 @@ Early smoke test on single-label classification (`train.py`):
 ## License
 
 Research and portfolio use. Verify license terms for Qwen2.5 and Financial PhraseBank before commercial deployment.
+
+
+## Resume Highlights
+
+- Built an end-to-end financial LLM fine-tuning pipeline using Qwen2.5, LoRA, and QLoRA.
+- Converted Financial PhraseBank into instruction-following data for sentiment reasoning.
+- Developed a Retrieval-Augmented Generation (RAG) financial assistant using FAISS and sentence-transformers.
+- Built a Streamlit application for interactive financial sentiment analysis and knowledge retrieval.
+
+
+
+
+## Future Improvements
+
+- SEC filing analysis
+- Earnings call transcript summarization
+- Multi-document retrieval
+- Agent-based financial research workflow
+- Evaluation with financial benchmarks
